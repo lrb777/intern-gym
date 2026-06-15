@@ -263,11 +263,11 @@ class ReplayEngine:
             if period == "hkbrokerqueueex":
                 result: dict[str, pd.DataFrame] = {}
                 for symbol in stock_list:
-                    records = self.silver.payload_records(period, [symbol])
+                    records = self.silver.broker_queue_payload_records([symbol], count=count)
                     records = _filter_records_time(records, start_time, end_time)
                     if count == 0:
                         records = records.iloc[0:0]
-                    elif count and count > 0:
+                    elif (start_time or end_time) and count and count > 0:
                         records = records.tail(count)
                     payloads = [dict(payload) for payload in records["payload"].tolist()]
                     df = _payloads_to_dataframe(payloads, period)

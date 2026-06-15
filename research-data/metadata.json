@@ -1,0 +1,29 @@
+{
+  "dataset": "hk_ipo_daily_research",
+  "generated_at": "2026-06-15T03:48:58+00:00",
+  "source": "beast_xtquant_refresh_plus_local_mammoth_parquet",
+  "source_docs": [
+    "internal Beast/Mammoth daily_bar via xtquant_client_optimized.fetch_daily_bar",
+    "internal Beast/Mammoth reference_data listing_date",
+    "internal Beast IPO candidate filtering rules"
+  ],
+  "requested_range": [
+    "20260101",
+    "20260615"
+  ],
+  "as_of": "20260615",
+  "symbol_count": 65,
+  "symbols_with_daily": 65,
+  "missing_daily_symbols": [],
+  "daily_rows": 3673,
+  "date_range": [
+    "20260102",
+    "20260615"
+  ],
+  "include_non_ordinary": false,
+  "notes": [
+    "Daily-only dataset for strategy internship exercises.",
+    "IPO fundamentals and grey-market data are intentionally not provided; candidates must research them independently.",
+    "Universe membership is derived from Beast/Mammoth reference_data listing dates."
+  ]
+}

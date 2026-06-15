@@ -18,6 +18,8 @@ make install
 make smoke
 ```
 
+前端项目需要 Node.js `>=20.19.0`。
+
 前端 mock feed：
 
 ```bash
@@ -118,6 +120,7 @@ tick.volume >= max(1, daily_baseline_volume * 0.0005)
 - `position/gear` 是原始档位，不能重新归一化。
 - `10 / 100 / 1000` 档切换只过滤原始档位范围。
 - `hkbrokerqueueex` 是完整快照覆盖，不是增量累加。
+- 如果最新可用 broker queue 日期早于当前 effective day，`mock-feed` 会输出 fallback snapshot，并在 `broker_queue.sourceDate/fallback/historical` 中标记。
 
 示例：
 

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>实习项目总览</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 22mm 20mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #1f2933;
+      font-family: "Noto Sans CJK SC", "Noto Sans CJK", "Source Han Sans SC", sans-serif;
+      font-size: 12px;
+      line-height: 1.76;
+      background: #fff;
+    }
+
+    .document {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 26px;
+      border-bottom: 2px solid #243447;
+      padding-bottom: 18px;
+    }
+
+    .eyebrow {
+      color: #52606d;
+      font-size: 11px;
+      letter-spacing: 0;
+      margin: 0 0 6px;
+    }
+
+    h1 {
+      margin: 0;
+      color: #102a43;
+      font-size: 28px;
+      line-height: 1.25;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      color: #334e68;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    section {
+      margin: 0 0 22px;
+      page-break-inside: avoid;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      color: #102a43;
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 9px;
+    }
+
+    .project {
+      border-top: 1px solid #d9e2ec;
+      padding-top: 15px;
+    }
+
+    .tagline {
+      color: #486581;
+      font-weight: 700;
+    }
+
+    footer {
+      border-top: 1px solid #d9e2ec;
+      color: #52606d;
+      font-size: 11px;
+      line-height: 1.65;
+      margin-top: 28px;
+      padding-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <main class="document">
+    <header>
+      <p class="eyebrow">Internship Engineering Lab</p>
+      <h1>实习项目总览</h1>
+      <p class="subtitle">本仓库面向前端、后端和策略三个实习方向，提供统一的 mock 数据环境和独立的项目入口。候选人不需要连接真实生产系统，也不会接触真实交易 token；评估重点是工程理解、数据语义处理、边界条件意识和可复现交付能力。</p>
+    </header>
+
+    <section>
+      <h2>整体定位</h2>
+      <p>这不是一个要求候选人“开箱即交答案”的模板仓库，而是一个接近真实工作流的练习环境。仓库提供有限但一致的数据、接口和脚手架，候选人需要先理解 mock 后端、数据契约和项目边界，再完成对应方向的实现、验证和说明。</p>
+      <p>三个项目共用同一套招聘语境，但职责明确分离。前端项目消费浏览器 WebSocket 行情流，后端项目消费 mock xtquant SDK 并构建状态服务，策略项目消费 HTTP 历史日线 API 并完成研究闭环。这样的拆分可以避免候选人被无关基础设施阻塞，同时保留足够的业务复杂度用于判断能力。</p>
+    </section>
+
+    <section class="project">
+      <h2>前端项目：Market Terminal Lite</h2>
+      <p><span class="tagline">前端方向关注实时行情界面的组织能力。</span>候选人需要基于 mock-feed 的 WebSocket 数据，完成一个可用的轻量行情终端。页面应支持 watchlist 切换、分钟线和成交量展示、大额交易提醒、买卖经纪队列展示，以及 10、100、1000 档视图切换。</p>
+      <p>这个项目重点考察候选人是否能把持续推送的数据整理成稳定的界面状态。候选人需要处理连接、重连、去重、旧数据标记、移动端布局和数据时间展示，而不是只把原始 JSON 打印到页面上。优秀实现应当在信息密度、响应速度和异常状态上都有清晰取舍。</p>
+    </section>
+
+    <section class="project">
+      <h2>后端项目：Market State Engine Lite</h2>
+      <p><span class="tagline">后端方向关注行情状态机和接口契约。</span>候选人需要使用 mock-xtquant 订阅分钟线、逐笔成交和经纪队列数据，为每个 symbol 独立维护 snapshot，并向前端提供 snapshot 和 delta。mock SDK 只模拟原始数据层，不替候选人完成业务状态管理。</p>
+      <p>这个项目重点考察候选人对实时数据边界的判断。实现需要正确处理 effective day 对齐、新交易日清理、动态 symbol onboard、可见集合切换和旧 broker queue fallback。一个合格后端不只是能推数据，还要能解释数据何时有效、何时应该丢弃、何时只能带标记降级返回。</p>
+    </section>
+
+    <section class="project">
+      <h2>策略项目：IPO / New Listing Daily Strategy Research</h2>
+      <p><span class="tagline">策略方向关注可复现研究和数据自查能力。</span>候选人通过 mock-research-api 获取 2026 年港股 IPO 普通股的日线行情、覆盖信息和成本模型。仓库只提供日线 OHLCV、成交额、前收和停牌标记，不提供发行价、超购倍数、保荐人、行业或暗盘表现。</p>
+      <p>候选人需要先完成数据下载和 coverage 检查，再复现一个首日表现驱动的日线 baseline 策略，并在手续费、滑点和最小费用约束下输出 trade log、metrics 和研究报告。改进方向可以来自成交量确认、gap 过滤、风险管理，也可以来自候选人自行调研的 IPO 或暗盘公开数据；关键是说明假设、记录来源，并与 baseline 做可解释对照。</p>
+    </section>
+
+    <section>
+      <h2>交付要求</h2>
+      <p>候选人应提交可运行代码、必要测试或验证命令、结果说明和已知限制。前后端项目更重视实时状态和界面/接口一致性，策略项目更重视数据审计、避免未来函数、成本建模和报告表达。所有项目都要求候选人说明自己如何运行、如何验证，以及哪些边界条件已经处理。</p>
+      <p>评分时不鼓励只堆功能或只给截图。我们更关注候选人能否读懂现有契约，能否把不完整数据处理成稳定产物，能否在有限时间内做出清晰、可维护、可复现的交付。</p>
+    </section>
+
+    <footer>
+      本文档为候选人总览材料。具体接口、字段、运行命令和评分细则以仓库内各项目 README 与 docs 文档为准。
+    </footer>
+  </main>
+</body>
+</html>

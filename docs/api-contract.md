@@ -87,6 +87,7 @@ ws://127.0.0.1:9021/ws
 - `minute_bars` 必须只包含当前 effective day。
 - `alerts` 必须只包含当前 effective day。
 - `broker_queue.ask/bid` 是最新完整快照。
+- 如果 `broker_queue` 来源日期不同于 effective day，服务端必须显式标记 `fallback: true` 和 `historical: true`，并填写 `sourceDate`。
 - `freshness.source_dates` 应记录 `minute_bars`、`alerts`、`broker_queue` 的数据来源时间。
 
 ## Broker Queue Rules
@@ -96,6 +97,20 @@ ws://127.0.0.1:9021/ws
 - `10 / 100 / 1000` 档切换只按原始档位过滤。
 - 每个价格档的 `volume` 是该档内所有 broker volume 的合计。
 - `hkbrokerqueueex` 到达时应覆盖上一张队列快照。
+
+带 fallback 标记的 broker queue 示例：
+
+```json
+{
+  "broker_queue": {
+    "ask": [],
+    "bid": [],
+    "sourceDate": "20260603",
+    "historical": true,
+    "fallback": true
+  }
+}
+```
 
 ## Alert Rules
 
@@ -119,4 +134,3 @@ tick.volume >= max(1, daily_baseline_volume * 0.0005)
   "thresholdVolume": 5000
 }
 ```
-

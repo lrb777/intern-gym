@@ -7,4 +7,9 @@ dist/
 .DS_Store
 .env
 *.log
-
+strategy-project/data/raw/*
+!strategy-project/data/raw/.gitkeep
+strategy-project/data/processed/*
+!strategy-project/data/processed/.gitkeep
+strategy-project/reports/*
+!strategy-project/reports/.gitkeep

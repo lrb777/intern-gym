@@ -31,10 +31,22 @@ ws://127.0.0.1:9021/ws
 
 ## Run
 
+需要 Node.js `>=20.19.0`。
+
+先在仓库根目录启动浏览器 mock feed：
+
+```bash
+make serve
+```
+
+再启动前端：
+
 ```bash
 npm install
 npm run dev
 ```
+
+`mock-feed` 会保证 `minute_bars` 和 `alerts` 只包含当前 effective day。若 broker queue 使用旧日期样本作为 fallback，payload 会带 `broker_queue.fallback/historical/sourceDate`。
 
 ## Submit
 
@@ -45,4 +57,3 @@ PR 里说明：
 - broker queue 档位过滤逻辑；
 - 移动端如何保证不溢出；
 - 你写了哪些测试。
-

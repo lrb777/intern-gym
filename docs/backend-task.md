@@ -2,6 +2,8 @@
 
 实现 `backend-project` 中的 Market State Engine Lite。
 
+后端默认使用 `mock-xtquant`，它模拟 SDK/raw sample 层，不替候选人完成 terminal API 的 effective day 过滤和状态机语义。
+
 ## Must Have
 
 - 从 `mock-xtquant` 订阅 `1m/hktransaction/hkbrokerqueueex`。
@@ -27,4 +29,3 @@
 - broker queue callback 覆盖 fallback。
 - dynamic onboard 只 hydrate 新 symbol。
 - duplicate alert 不重复出现。
-

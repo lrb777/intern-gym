@@ -3,28 +3,79 @@ export interface SnapshotPayload {
   snapshot: {
     symbol: string
     name: string
+    currency?: string
     price: number
+    open?: number
+    high?: number
+    low?: number
+    volume?: number
+    turnover?: number
     updatedAt: string
     tradeDate: string
   }
-  minute_bars: Array<Record<string, unknown>>
-  alerts: Array<Record<string, unknown>>
+  minute_bars: MarketBar[]
+  alerts: TradeAlert[]
   broker_queue: {
-    ask: Array<Record<string, unknown>>
-    bid: Array<Record<string, unknown>>
+    ask: QueueLevel[]
+    bid: QueueLevel[]
+    sourceDate?: string
+    historical?: boolean
+    fallback?: boolean
   }
   freshness: Record<string, unknown>
+}
+
+export interface MarketBar {
+  timestamp: string
+  price: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  turnover: number
+}
+
+export interface TradeAlert {
+  id: string
+  timestamp: string
+  tradeDate: string
+  price: number
+  volume: number
+  turnover: number
+  side: string
+  thresholdVolume?: number
+}
+
+export interface QueueLevel {
+  id: string
+  side: 'ask' | 'bid'
+  position: number
+  gear: number
+  price: number
+  volume: number
+  brokerCount: number
+  brokers: Array<{ brokerCode: string; displayName: string; volume: number }>
+}
+
+export interface DeltaPayload {
+  delta_type?: 'minute_bar' | 'trade_tick' | 'broker_queue'
+  minute_bar?: MarketBar
+  alert?: TradeAlert | null
+  broker_queue?: SnapshotPayload['broker_queue']
 }
 
 interface ClientHandlers {
   onStatus?: (status: 'open' | 'closed' | 'error') => void
   onSnapshot?: (symbol: string, payload: SnapshotPayload) => void
-  onDelta?: (symbol: string, payload: Record<string, unknown>) => void
+  onDelta?: (symbol: string, payload: DeltaPayload) => void
 }
 
 export class MarketFeedClient {
   private ws: WebSocket | null = null
   private reconnectTimer: number | null = null
+  private closedByClient = false
+  private pendingCommands: string[] = []
 
   constructor(
     private readonly url: string,
@@ -32,21 +83,33 @@ export class MarketFeedClient {
   ) {}
 
   connect() {
+    this.closedByClient = false
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
+      return
+    }
     this.ws = new WebSocket(this.url)
-    this.ws.onopen = () => this.handlers.onStatus?.('open')
+    this.ws.onopen = () => {
+      this.handlers.onStatus?.('open')
+      this.flushPending()
+    }
     this.ws.onerror = () => this.handlers.onStatus?.('error')
     this.ws.onclose = () => {
       this.handlers.onStatus?.('closed')
-      this.reconnectTimer = window.setTimeout(() => this.connect(), 1000)
+      if (!this.closedByClient) {
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 1000)
+      }
     }
     this.ws.onmessage = (event) => this.handleMessage(event.data)
   }
 
   close() {
+    this.closedByClient = true
     if (this.reconnectTimer !== null) {
       window.clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
     }
     this.ws?.close()
+    this.ws = null
   }
 
   requestSnapshots(symbols: string[]) {
@@ -65,11 +128,21 @@ export class MarketFeedClient {
       request_id: `${command}-${Date.now()}`,
       symbols,
     }
-    const send = () => this.ws?.send(JSON.stringify(frame))
+    const encoded = JSON.stringify(frame)
     if (this.ws?.readyState === WebSocket.OPEN) {
-      send()
+      this.ws.send(encoded)
     } else {
-      window.setTimeout(send, 250)
+      this.pendingCommands.push(encoded)
+      this.connect()
+    }
+  }
+
+  private flushPending() {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      return
+    }
+    for (const command of this.pendingCommands.splice(0)) {
+      this.ws.send(command)
     }
   }
 
@@ -83,4 +156,3 @@ export class MarketFeedClient {
     }
   }
 }
-

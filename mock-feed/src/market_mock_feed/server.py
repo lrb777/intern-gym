@@ -52,11 +52,30 @@ def compact_name(value: Any) -> str:
     return text[:8] or "未披露"
 
 
+def queue_row_key(row: dict[str, Any]) -> tuple[str, str]:
+    side = str(row.get("side") or "").lower()
+    order_id = str(row.get("order_id") or "").strip()
+    if order_id:
+        return (side, f"order:{order_id}")
+    return (
+        side,
+        "level:"
+        + "|".join(
+            [
+                str(int(float(row.get("position") or row.get("gear") or 0))),
+                str(row.get("broker_code") or "0"),
+                str(float(row.get("price") or 0.0)),
+            ]
+        ),
+    )
+
+
 @dataclass
 class SymbolState:
     symbol: str
     name: str
     baseline_volume: int
+    effective_day: str
     seq: int = 0
     payload: dict[str, Any] = field(default_factory=dict)
 
@@ -86,40 +105,51 @@ class SampleDataStore:
         frame = self.minute[self.minute["symbol"].astype(str).str.upper() == symbol].sort_values("bar_ts")
         return frame.tail(limit).to_dict("records")
 
-    def tick_rows(self, symbol: str, limit: int = 500) -> list[dict[str, Any]]:
+    def minute_rows_for_day(self, symbol: str, trade_date: str, limit: int = 420) -> list[dict[str, Any]]:
+        frame = self.minute[self.minute["symbol"].astype(str).str.upper() == symbol].copy()
+        frame["_trade_date"] = frame["bar_ts"].map(trade_date_from_timestamp)
+        frame = frame[frame["_trade_date"] == trade_date].sort_values("bar_ts")
+        return frame.tail(limit).drop(columns=["_trade_date"], errors="ignore").to_dict("records")
+
+    def tick_rows(self, symbol: str, limit: int = 500, trade_date: str = "") -> list[dict[str, Any]]:
         frame = self.ticks[self.ticks["symbol"].astype(str).str.upper() == symbol].sort_values("tick_ts")
+        if trade_date:
+            frame = frame.copy()
+            frame["_trade_date"] = frame["tick_ts"].map(trade_date_from_timestamp)
+            frame = frame[frame["_trade_date"] == trade_date]
+            frame = frame.drop(columns=["_trade_date"], errors="ignore")
         return frame.head(limit).to_dict("records")
 
     def latest_queue_rows(self, symbol: str) -> list[dict[str, Any]]:
-        snapshots = self.queue_frames(symbol, limit=10_000)
-        return list(snapshots[-1].get("rows") or []) if snapshots else []
+        book_rows: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in self.queue_rows(symbol):
+            book_rows[queue_row_key(row)] = row
+        return list(book_rows.values())
 
     def queue_frames(self, symbol: str, limit: int = 120) -> list[dict[str, Any]]:
-        frame = self.queue[self.queue["symbol"].astype(str).str.upper() == symbol].sort_values("queue_ts")
         book_rows: dict[tuple[str, str], dict[str, Any]] = {}
         snapshots: list[dict[str, Any]] = []
-        for row in frame.to_dict("records"):
-            side = str(row.get("side") or "").lower()
-            order_id = str(row.get("order_id") or "").strip()
-            if order_id:
-                key = (side, f"order:{order_id}")
-            else:
-                key = (
-                    side,
-                    "level:"
-                    + "|".join(
-                        [
-                            str(int(float(row.get("position") or row.get("gear") or 0))),
-                            str(row.get("broker_code") or "0"),
-                            str(float(row.get("price") or 0.0)),
-                        ]
-                    ),
-                )
-            book_rows[key] = row
+        for row in self.queue_rows(symbol):
+            book_rows[queue_row_key(row)] = row
             snapshots.append({"queue_ts": row.get("queue_ts"), "rows": list(book_rows.values())})
             if len(snapshots) >= limit:
                 break
         return snapshots
+
+    def queue_rows(self, symbol: str) -> list[dict[str, Any]]:
+        frame = self.queue[self.queue["symbol"].astype(str).str.upper() == symbol].sort_values("queue_ts")
+        return frame.to_dict("records")
+
+    def effective_day(self, symbol: str) -> str:
+        configured = os.getenv("MARKET_EFFECTIVE_DAY", "").strip()
+        if configured:
+            return configured.replace("-", "")
+        frame = self.minute[self.minute["symbol"].astype(str).str.upper() == symbol].copy()
+        if frame.empty:
+            return ""
+        frame["_trade_date"] = frame["bar_ts"].map(trade_date_from_timestamp)
+        dates = sorted(date for date in frame["_trade_date"].dropna().unique() if date)
+        return str(dates[-1]) if dates else ""
 
 
 def latest_daily_volume(frame: pd.DataFrame) -> dict[str, int]:
@@ -146,6 +176,7 @@ class MarketFeed:
                 symbol=symbol,
                 name=store.names.get(symbol, symbol),
                 baseline_volume=store.baseline_volume.get(symbol, 0),
+                effective_day=store.effective_day(symbol),
             )
             for symbol in symbols
         }
@@ -154,12 +185,18 @@ class MarketFeed:
 
     def hydrate(self, symbol: str) -> None:
         state = self.states[symbol]
-        state.payload = empty_snapshot(symbol, state.name)
-        for row in self.store.minute_rows(symbol):
+        state.payload = empty_snapshot(symbol, state.name, state.effective_day)
+        for row in self.store.minute_rows_for_day(symbol, state.effective_day):
             bar = minute_bar(row)
             upsert_bar(state.payload["minute_bars"], bar)
             update_quote_from_bar(state, bar)
-        state.payload["broker_queue"] = broker_queue_from_rows(self.store.latest_queue_rows(symbol), self.store.brokers)
+        state.payload["alerts"] = filter_current_day(state.payload["alerts"], state.effective_day)
+        state.payload["minute_bars"] = filter_current_day(state.payload["minute_bars"], state.effective_day)
+        state.payload["broker_queue"] = broker_queue_from_rows(
+            self.store.latest_queue_rows(symbol),
+            self.store.brokers,
+            effective_day=state.effective_day,
+        )
 
     def start_replay(self) -> None:
         for symbol in self.symbols:
@@ -172,13 +209,15 @@ class MarketFeed:
             task.cancel()
 
     async def replay_minutes(self, symbol: str) -> None:
-        for row in self.store.minute_rows(symbol, limit=500):
+        state = self.states[symbol]
+        for row in self.store.minute_rows_for_day(symbol, state.effective_day, limit=500):
             await asyncio.sleep(replay_interval())
             await self.apply("1m", symbol, row)
 
     async def replay_ticks(self, symbol: str) -> None:
+        state = self.states[symbol]
         max_events = int(os.getenv("XTMOCK_REPLAY_MAX_EVENTS_PER_SUBSCRIPTION", "500"))
-        for row in self.store.tick_rows(symbol, limit=max_events):
+        for row in self.store.tick_rows(symbol, limit=max_events, trade_date=state.effective_day):
             await asyncio.sleep(replay_interval())
             await self.apply("hktransaction", symbol, row)
 
@@ -191,18 +230,23 @@ class MarketFeed:
         state = self.states[symbol]
         if period == "1m":
             bar = minute_bar(payload)
+            if trade_date_from_timestamp(bar["timestamp"]) != state.effective_day:
+                return
             upsert_bar(state.payload["minute_bars"], bar)
             update_quote_from_bar(state, bar)
             delta = {"delta_type": "minute_bar", "minute_bar": bar}
         elif period == "hktransaction":
             tick = trade_tick(payload)
+            if tick["tradeDate"] != state.effective_day:
+                return
             update_quote_from_tick(state, tick)
             alert = big_trade_alert(state, tick)
             if alert is not None:
                 merge_alert(state.payload["alerts"], alert)
+                touch_freshness(state, alert["timestamp"], "alerts")
             delta = {"delta_type": "trade_tick", "tick": tick, "alert": alert}
         elif period == "hkbrokerqueueex":
-            queue = broker_queue_from_rows(list(payload.get("rows") or []), self.store.brokers)
+            queue = broker_queue_from_rows(list(payload.get("rows") or []), self.store.brokers, effective_day=state.effective_day)
             state.payload["broker_queue"] = queue
             touch_freshness(state, queue_timestamp(payload), "broker_queue")
             delta = {"delta_type": "broker_queue", "broker_queue": queue}
@@ -271,14 +315,14 @@ def frame(message_type: str, *, symbol: str = "", seq: int = 0, request_id: str 
     return result
 
 
-def empty_snapshot(symbol: str, name: str) -> dict[str, Any]:
+def empty_snapshot(symbol: str, name: str, effective_day: str = "") -> dict[str, Any]:
     return {
         "symbol": symbol,
-        "snapshot": {"symbol": symbol, "name": name, "currency": "HKD", "price": 0.0, "updatedAt": "", "tradeDate": ""},
+        "snapshot": {"symbol": symbol, "name": name, "currency": "HKD", "price": 0.0, "updatedAt": "", "tradeDate": effective_day},
         "minute_bars": [],
         "alerts": [],
-        "broker_queue": {"ask": [], "bid": []},
-        "freshness": {"runtime_state": "WARM", "source_dates": {}},
+        "broker_queue": {"ask": [], "bid": [], "sourceDate": "", "historical": False, "fallback": False},
+        "freshness": {"runtime_state": "WARM", "effective_day": effective_day, "source_dates": {}},
     }
 
 
@@ -311,8 +355,15 @@ def trade_tick(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def broker_queue_from_rows(rows: list[dict[str, Any]], brokers: dict[str, str]) -> dict[str, list[dict[str, Any]]]:
-    result = {"ask": [], "bid": []}
+def broker_queue_from_rows(rows: list[dict[str, Any]], brokers: dict[str, str], *, effective_day: str = "") -> dict[str, Any]:
+    source_date = queue_source_date(rows)
+    result: dict[str, Any] = {
+        "ask": [],
+        "bid": [],
+        "sourceDate": source_date,
+        "historical": bool(source_date and effective_day and source_date != effective_day),
+        "fallback": bool(source_date and effective_day and source_date != effective_day),
+    }
     if not rows:
         return result
     frame = pd.DataFrame(rows)
@@ -339,6 +390,25 @@ def broker_queue_from_rows(rows: list[dict[str, Any]], brokers: dict[str, str]) 
     for side in ("ask", "bid"):
         result[side].sort(key=lambda item: int(item["position"]))
     return result
+
+
+def queue_source_date(rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        trade_date = trade_date_from_timestamp(row.get("queue_ts"))
+        if trade_date:
+            return trade_date
+    return ""
+
+
+def filter_current_day(rows: list[dict[str, Any]], effective_day: str) -> list[dict[str, Any]]:
+    if not effective_day:
+        return rows
+    filtered = []
+    for row in rows:
+        timestamp = row.get("timestamp") or row.get("updatedAt") or row.get("bar_ts") or row.get("tick_ts")
+        if trade_date_from_timestamp(timestamp) == effective_day or row.get("tradeDate") == effective_day:
+            filtered.append(row)
+    return filtered
 
 
 def queue_timestamp(payload: dict[str, Any]) -> str:

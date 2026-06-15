@@ -2,6 +2,14 @@
 
 实现 `frontend-project` 中的 Market Terminal Lite。
 
+前端默认消费 `mock-feed`：
+
+```text
+ws://127.0.0.1:9021/ws
+```
+
+`mock-feed` 保证分钟线和 alerts 不跨 effective day；旧 broker queue fallback 会通过 `broker_queue.sourceDate/fallback/historical` 标记。
+
 ## Must Have
 
 - watchlist + symbol 切换。
@@ -35,4 +43,3 @@
 - 展开/收起不改变左右两列宽度。
 - 旧日期 alert 不显示。
 - WebSocket reconnect 后不会重复插入同一 alert。
-

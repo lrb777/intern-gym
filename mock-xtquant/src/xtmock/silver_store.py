@@ -120,6 +120,16 @@ class SilverStore:
             return records.copy()
         return records.reset_index(drop=True)
 
+    def broker_queue_payload_records(
+        self,
+        symbols: Iterable[str] | None = None,
+        *,
+        count: int = -1,
+    ) -> pd.DataFrame:
+        if count and count > 0:
+            return self._broker_queue_records(symbols, snapshot_limit=count)
+        return self.payload_records("hkbrokerqueueex", symbols)
+
     def market_dataframe(self, period: str, symbol: str) -> pd.DataFrame:
         records = self.payload_records(period, [symbol])
         if records.empty:
@@ -277,7 +287,7 @@ class SilverStore:
         df["payload"] = [_tick_payload(row) for row in df.to_dict("records")]
         return df[["symbol", "event_time", "payload"]].reset_index(drop=True)
 
-    def _broker_queue_records(self, symbols: Iterable[str] | None = None) -> pd.DataFrame:
+    def _broker_queue_records(self, symbols: Iterable[str] | None = None, *, snapshot_limit: int = 0) -> pd.DataFrame:
         raw = self._raw("hkbrokerqueueex", symbols=symbols, columns=BROKER_QUEUE_COLUMNS)
         if raw.empty:
             return pd.DataFrame(columns=["symbol", "event_time", "payload"])
@@ -293,6 +303,8 @@ class SilverStore:
         rows = []
         for symbol, group in df.groupby("symbol", sort=True):
             book_rows: dict[tuple[str, str], dict] = {}
+            event_times = list(group["event_time"].drop_duplicates())
+            selected_event_times = set(event_times[-snapshot_limit:]) if snapshot_limit > 0 else set(event_times)
             for event_time, event_group in group.groupby("event_time", sort=True):
                 for _, row in event_group.iterrows():
                     row_dict = row.to_dict()
@@ -313,6 +325,8 @@ class SilverStore:
                             ),
                         )
                     book_rows[row_key] = row_dict
+                if event_time not in selected_event_times:
+                    continue
                 snapshot_group = pd.DataFrame(book_rows.values())
                 queues = _broker_queue_levels(snapshot_group)
                 queue_ts = str(event_group.iloc[-1].get("queue_ts") or "")

@@ -1,0 +1,7 @@
+{
+  "currency": "HKD",
+  "buy_cost_bps": 12.0,
+  "sell_cost_bps": 22.0,
+  "slippage_bps": 10.0,
+  "min_fee": 5.0
+}

@@ -4,13 +4,38 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 import websockets
 from xtquant import xtdata
 
 
+PROTOCOL = "terminal-message-v3"
+SCHEMA_VERSION = 1
 DEFAULT_SYMBOLS = ("02723.HK", "02675.HK", "00100.HK", "02513.HK", "06082.HK")
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+
+
+def frame(message_type: str, *, symbol: str = "", seq: int = 0, request_id: str = "", payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = {
+        "schema_version": SCHEMA_VERSION,
+        "protocol": PROTOCOL,
+        "type": message_type,
+        "source": "candidate-backend",
+        "server_ts": now_iso(),
+        "payload": payload or {},
+    }
+    if symbol:
+        result["symbol"] = symbol
+    if seq:
+        result["seq"] = seq
+    if request_id:
+        result["request_id"] = request_id
+    return result
 
 
 @dataclass
@@ -55,31 +80,16 @@ class MarketStateEngine:
 
     def snapshot_frame(self, symbol: str) -> dict[str, Any]:
         snapshot = self.snapshots[symbol]
-        return {
-            "schema_version": 1,
-            "protocol": "terminal-message-v3",
-            "type": "snapshot",
-            "symbol": symbol,
-            "seq": max(1, snapshot.seq),
-            "payload": snapshot.payload,
-        }
+        return frame("snapshot", symbol=symbol, seq=max(1, snapshot.seq), payload=snapshot.payload)
 
 
 async def handle_client(websocket: Any, engine: MarketStateEngine) -> None:
-    await websocket.send(json.dumps({"schema_version": 1, "protocol": "terminal-message-v3", "type": "hello"}))
+    await websocket.send(json.dumps(frame("hello", payload={"symbols": engine.symbols})))
     async for raw in websocket:
         command = json.loads(raw)
         symbols = [str(item).upper() for item in command.get("symbols", [])] or engine.symbols
         await websocket.send(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "protocol": "terminal-message-v3",
-                    "type": "ack",
-                    "request_id": command.get("request_id", ""),
-                    "payload": {"command": command.get("command"), "accepted": True},
-                }
-            )
+            json.dumps(frame("ack", request_id=command.get("request_id", ""), payload={"command": command.get("command"), "accepted": True}))
         )
         if command.get("command") in {"snapshot_request", "visible_set"}:
             for symbol in symbols:
@@ -103,4 +113,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -33,4 +33,4 @@ from xtquant import xtdata
 - 不连接真实行情；
 - 不包含真实 token；
 - 只用于练习和测试。
-
+- 输出接近 raw sample/SDK 语义，可能包含不同 source date；后端候选人需要自己产出符合 API contract 的业务 snapshot/delta。

@@ -10,6 +10,13 @@ from xtquant import xtdata
 
 不要接入真实 xtquant、Redis、Kafka 或生产服务。
 
+`mock-xtquant` 模拟的是 SDK/raw sample 语义，不保证已经是 terminal API 业务视图。后端实现需要负责：
+
+- effective day 对齐；
+- old-date alerts 清理；
+- broker queue snapshot 覆盖；
+- 输出符合 `docs/api-contract.md` 的 snapshot/delta。
+
 ## Required Features
 
 - 订阅 5 支股票：
@@ -47,6 +54,12 @@ XTMOCK_SILVER_ROOT=../sample-data \
 python -m market_state_engine.app
 ```
 
+启动后默认监听：
+
+```text
+ws://127.0.0.1:9031/ws
+```
+
 ## Big Trade Definition
 
 默认阈值：
@@ -66,4 +79,3 @@ PR 里说明：
 - effective day 怎么处理；
 - broker queue 为什么是覆盖而不是累加；
 - 测试覆盖了哪些坑。
-

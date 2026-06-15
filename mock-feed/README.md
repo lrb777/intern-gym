@@ -29,5 +29,10 @@ ws://127.0.0.1:9021/ws
 - trade tick delta
 - broker queue delta
 
-注意：前端候选人使用这个服务；后端候选人使用 `mock-xtquant`。
+Contract 行为：
 
+- `minute_bars` 和 `alerts` 只包含当前 effective day。
+- 旧日期 broker queue 可作为 fallback snapshot 输出，但必须带 `sourceDate/fallback/historical` 标记。
+- `hkbrokerqueueex` delta 覆盖上一张队列快照，不是增量累加。
+
+注意：前端候选人使用这个服务；后端候选人使用 `mock-xtquant`。
