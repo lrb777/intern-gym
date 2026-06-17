@@ -101,6 +101,23 @@ def coverage_summary(universe: pd.DataFrame, daily: pd.DataFrame) -> dict[str, o
     duplicate_keys = int(daily_keys.duplicated().sum())
     daily_symbols = set(daily["symbol"].unique())
     universe_symbols = set(universe["symbol"].unique())
+
+    suspend_count = int(daily["suspend_flag"].sum()) if "suspend_flag" in daily.columns else 0
+    zero_volume_count = int((daily["volume"] == 0).sum()) if "volume" in daily.columns else 0
+
+    has_suspend = "suspend_flag" in daily.columns
+    has_volume = "volume" in daily.columns
+    if has_suspend and has_volume:
+        valid_mask = (daily["suspend_flag"] == 0) & (daily["volume"] > 0)
+    elif has_suspend:
+        valid_mask = daily["suspend_flag"] == 0
+    elif has_volume:
+        valid_mask = daily["volume"] > 0
+    else:
+        valid_mask = pd.Series(True, index=daily.index)
+    valid_counts = daily[valid_mask].groupby("symbol").size()
+    symbols_with_few_bars = int((valid_counts < 3).sum())
+
     return {
         "symbol_count": int(len(universe_symbols)),
         "daily_rows": int(len(daily)),
@@ -108,6 +125,9 @@ def coverage_summary(universe: pd.DataFrame, daily: pd.DataFrame) -> dict[str, o
         "date_max": str(daily["trade_date"].max() or ""),
         "missing_daily_symbols": sorted(universe_symbols - daily_symbols),
         "duplicate_daily_keys": duplicate_keys,
+        "suspend_count": suspend_count,
+        "zero_volume_count": zero_volume_count,
+        "symbols_with_few_bars": symbols_with_few_bars,
     }
 
 

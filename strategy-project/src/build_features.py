@@ -18,8 +18,17 @@ def build_daily_ipo_features(universe: pd.DataFrame, daily_bars: pd.DataFrame, *
         bars = group.sort_values("trade_date").reset_index(drop=True)
         if len(bars) < 2:
             continue
-        first = bars.iloc[0]
-        entry = bars.iloc[1]
+
+        has_suspend = "suspend_flag" in bars.columns
+        valid_mask = (bars["open"] > 0) & (bars["close"] > 0) & (bars["volume"] > 0)
+        if has_suspend:
+            valid_mask = valid_mask & (bars["suspend_flag"] == 0)
+        valid_bars = bars[valid_mask].reset_index(drop=True)
+        if len(valid_bars) < 2:
+            continue
+
+        first = valid_bars.iloc[0]
+        entry = valid_bars.iloc[1]
         first_day_return = safe_return(float(first["close"]), float(first["open"]))
         listing_row = universe[universe["symbol"] == symbol].head(1)
         coverage_start = str(first["trade_date"])
@@ -53,7 +62,9 @@ def normalize_daily(frame: pd.DataFrame) -> pd.DataFrame:
     result = frame.copy()
     result["symbol"] = result["symbol"].astype(str).str.upper()
     result["trade_date"] = result["trade_date"].astype(str).str.replace("-", "", regex=False)
-    for column in ("open", "high", "low", "close", "volume", "turnover"):
+    for column in ("open", "high", "low", "close", "volume", "turnover", "suspend_flag"):
+        if column not in result.columns:
+            result[column] = 0
         result[column] = pd.to_numeric(result[column], errors="coerce").fillna(0)
     return result
 

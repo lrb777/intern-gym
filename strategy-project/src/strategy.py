@@ -42,6 +42,10 @@ def generate_baseline_trades(
         stop_level = entry_price * (1 - stop_loss_pct)
         take_profit_level = entry_price * (1 + take_profit_pct)
         for _, row in path.iterrows():
+            if float(row.get("suspend_flag", 0)) == 1:
+                continue
+            if float(row.get("open", 0)) == 0 or float(row.get("volume", 0)) == 0:
+                continue
             low = float(row["low"])
             high = float(row["high"])
             if low <= stop_level:
@@ -88,10 +92,49 @@ def generate_baseline_trades(
     return pd.DataFrame(trades)
 
 
+def generate_volume_filtered_trades(
+    features: pd.DataFrame,
+    daily_bars: pd.DataFrame,
+    cost_model: dict[str, float],
+    *,
+    notional_per_trade: float = 100_000.0,
+    holding_days: int = 3,
+    stop_loss_pct: float = 0.08,
+    take_profit_pct: float = 0.20,
+    volume_percentile: float = 0.5,
+    use_turnover: bool = True,
+) -> pd.DataFrame:
+    """Baseline + Volume/Turnover Confirmation filter.
+
+    Only enters trades where the first-day turnover (or volume) exceeds
+    the sample percentile threshold, in addition to the baseline momentum signal.
+    """
+    base_col = "first_day_turnover" if use_turnover else "first_day_volume"
+    if base_col not in features.columns or features.empty:
+        return pd.DataFrame()
+
+    threshold_value = float(features[base_col].quantile(volume_percentile))
+    filtered_features = features[
+        features["baseline_signal"] & (features[base_col] >= threshold_value)
+    ].copy()
+
+    return generate_baseline_trades(
+        filtered_features.assign(baseline_signal=True),
+        daily_bars,
+        cost_model,
+        notional_per_trade=notional_per_trade,
+        holding_days=holding_days,
+        stop_loss_pct=stop_loss_pct,
+        take_profit_pct=take_profit_pct,
+    )
+
+
 def normalize_daily(frame: pd.DataFrame) -> pd.DataFrame:
     result = frame.copy()
     result["symbol"] = result["symbol"].astype(str).str.upper()
     result["trade_date"] = result["trade_date"].astype(str).str.replace("-", "", regex=False)
-    for column in ("open", "high", "low", "close", "volume", "turnover"):
+    for column in ("open", "high", "low", "close", "volume", "turnover", "suspend_flag"):
+        if column not in result.columns:
+            result[column] = 0
         result[column] = pd.to_numeric(result[column], errors="coerce").fillna(0)
     return result
